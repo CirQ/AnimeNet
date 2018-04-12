@@ -10,6 +10,7 @@ import torch.optim as optim
 from torch import FloatTensor
 from torch.autograd import Variable, grad
 from torch.utils.data import DataLoader
+import torchvision.utils as vutil
 
 from data import TagImageDataset
 from model import Generator, Discriminator
@@ -96,8 +97,7 @@ def main():
     print('[INFO] Start Training')
     for epoch in range(opt.start_epoch, opt.epoch+1):
         train(train_loader, G, D, G_optim, D_optim, criterion, epoch)
-        if epoch % opt.check_step == 0:
-            save_checkpoint(G, D, G_optim, D_optim, epoch)
+        save_stage(G, D, G_optim, D_optim, epoch)
 
 
 def adjust_learning_rate(optimizer, epoch):
@@ -193,11 +193,13 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion, epoch):
 
         print('[%d/%d] [%d/%d] Loss_D: %.4f Loss_G: %.4f Loss_D_Label: %.4f Loss_G_Label: %.4f Loss_D_Tag: %.4f Loss_G_Tag: %.4f' % (epoch, opt.epoch, iteration, len(train_loader), loss_d.data[0], loss_g_gen.data[0], loss_d_real_label.data[0] + loss_d_fake_label.data[0], loss_g_gen_label.data[0], loss_d_real_tag.data[0] + loss_d_fake_tag.data[0], loss_g_gen_tag.data[0]))
 
-def save_checkpoint(gen, dis, gen_optim, dis_optim, epoch):
+def save_stage(gen, dis, gen_optim, dis_optim, epoch):
     if not os.path.exists('checkpoint'):
         os.makedirs('checkpoint')
+    if not os.path.exists('samples'):
+        os.makedirs('samples')
 
-    model_out_path = os.path.join('checkpoint', 'model_epoch_{}.pth'.format(epoch))
+    checkpoint_out_path = os.path.join('checkpoint', 'checkpoint_epoch_{:03d}.pth'.format(epoch))
     state = {
         'epoch': epoch,
         'g': gen.state_dict(),
@@ -205,9 +207,18 @@ def save_checkpoint(gen, dis, gen_optim, dis_optim, epoch):
         'g_optim': gen_optim.state_dict(),
         'd_optim': dis_optim.state_dict(),
     }
-    torch.save(state, model_out_path)
-    print('[DUMP] checkpoint in epoch {} saved'.format(epoch))
+    if epoch % opt.check_step == 0:
+        torch.save(state, checkpoint_out_path)
+        print('[DUMP] checkpoint in epoch {} saved'.format(epoch))
 
+    samples_out_path = os.path.join('samples', 'samples_epoch_{:03d}.jpg'.format(epoch))
+    z = Variable(FloatTensor(opt.batch, opt.noise_size))
+    tags = Variable(FloatTensor(opt.batch, opt.features))
+    z.data.normal_(0, 1)
+    tags.data.uniform_(to=1)
+    sample = gen(torch.cat((z, tags), 1))
+    vutil.save_image(sample.data.view(opt.batch, 3, opt.image_size, opt.image_size), samples_out_path)
+    print('[DEMO] samples in epoch {} saved'.format(epoch))
 
 if __name__ == '__main__':
     main()
