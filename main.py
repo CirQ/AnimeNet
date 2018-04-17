@@ -107,28 +107,29 @@ lambda_adv = opt.features
 lambda_gp = 0.5
 def train(train_loader, gen, dis, g_optim, d_optim, criterion):
     start_time = time.time()
+
+    X = Variable(FloatTensor(opt.batch, 3, opt.image_size, opt.image_size))
+    z = Variable(FloatTensor(opt.batch, opt.noise_size))
+    tag_real = Variable(FloatTensor(opt.batch, opt.features))
+    tag_fake = Variable(FloatTensor(opt.batch, opt.features))
+    y_real = Variable(torch.ones(opt.batch))
+    y_fake = Variable(torch.zeros(opt.batch))
+
+    if opt.cuda:
+        X, z = X.cuda(), z.cuda()
+        tag_real, tag_fake = tag_real.cuda(), tag_fake.cuda()
+        y_real, y_fake = y_real.cuda(), y_fake.cuda()
+
     dis.train()
     for epoch in range(opt.start_epoch, opt.epoch+1):
         adjust_learning_rate(g_optim, epoch)
         adjust_learning_rate(d_optim, epoch)
 
-        X = Variable(FloatTensor(opt.batch, 3, opt.image_size, opt.image_size))
-        z = Variable(FloatTensor(opt.batch, opt.noise_size))
-        tag_real = Variable(FloatTensor(opt.batch, opt.features))
-        tag_fake = Variable(FloatTensor(opt.batch, opt.features))
-        y_real = Variable(torch.ones(opt.batch))
-        y_fake = Variable(torch.zeros(opt.batch))
-
-        if opt.cuda:
-            X, z = X.cuda(), z.cuda()
-            tag_real, tag_fake = tag_real.cuda(), tag_fake.cuda()
-            y_real, y_fake = y_real.cuda(), y_fake.cuda()
-
         gen.train()
         for iteration, (tag, img) in enumerate(train_loader, start=1):
             X.data.copy_(img)
-            tag_real.data.copy_(tag)
             z.data.normal_(0, 1)
+            tag_real.data.copy_(tag)
             tag_fake.data.uniform_(to=1)
             vec = torch.cat((z, tag_fake), 1)
 
@@ -142,6 +143,7 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion):
             d_real_label_loss = criterion(pred_real, y_real)
             d_real_tag_loss = criterion(pred_real_t, tag_real)
             d_real_loss = lambda_adv * d_real_label_loss + d_real_tag_loss
+            d_real_loss.backward()
 
             # trained with fake image
             fake_X = gen(vec)
@@ -149,6 +151,7 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion):
             d_fake_label_loss = criterion(pred_fake, y_fake)
             d_fake_tag_loss = criterion(pred_fake_t, tag_fake)
             d_fake_loss = lambda_adv * d_fake_label_loss + d_fake_tag_loss
+            d_fake_loss.backward()
 
             # gradient penalty
             shape = [opt.batch] + [1 for _ in range(X.dim()-1)]
@@ -164,9 +167,9 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion):
             gradients = grad(outputs=pred_hat, inputs=x_hat, grad_outputs=grad_out,
                              create_graph=True, retain_graph=True, only_inputs=True)[0]
             gradient_penalty = lambda_gp * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
-            d_loss = d_real_loss + d_fake_loss + gradient_penalty
+            gradient_penalty.backward()
 
-            d_loss.backward()
+            d_loss = d_real_loss + d_fake_loss + gradient_penalty
             d_optim.step()
 
             ######################
@@ -184,7 +187,7 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion):
             g_optim.step()
 
             elapsed = time.time() - start_time
-            print('[%d/%d] [%d/%d] elapsd: %.4f loss_d: %.4f loss_g: %.4f' % (epoch, opt.epoch, iteration, len(train_loader), elapsed, d_loss.data[0], g_loss.data[0]))
+            print('[%03d/%d] [%03d/%d]  elapsd: %-10.4f  loss_d: %10.4f  loss_g: %10.4f' % (epoch, opt.epoch, iteration, len(train_loader), elapsed, d_loss.data[0], g_loss.data[0]))
 
         save_stage(gen, dis, g_optim, d_optim, epoch)
 
@@ -206,7 +209,7 @@ def save_stage(gen, dis, gen_optim, dis_optim, epoch):
         torch.save(state, checkpoint_out_path)
         print('[DUMP] checkpoint in epoch {} saved'.format(epoch))
 
-    samples_out_path = os.path.join('samples', 'samples_epoch_{:03d}.jpg'.format(epoch))
+    samples_out_path = os.path.join('samples', 'samples_epoch_{:03d}.png'.format(epoch))
     z = Variable(FloatTensor(opt.batch, opt.noise_size))
     tags = Variable(FloatTensor(opt.batch, opt.features))
     z.data.normal_(0, 1)
