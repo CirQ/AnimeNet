@@ -1,7 +1,6 @@
 from __future__ import division
 
 import argparse
-import gc
 import os
 import time
 
@@ -55,7 +54,6 @@ def main():
     print('[INFO] Loading datasets')
     train_set = TagImageDataset(tag_path=opt.tag, img_path=opt.image)
     train_loader = DataLoader(train_set, num_workers=opt.threads, batch_size=opt.batch, shuffle=True, drop_last=True)
-    # train_loader = DataLoader(train_set, batch_size=opt.batch, shuffle=True, drop_last=True)
 
     print('[INFO] Building model')
     G = Generator(opt.features)
@@ -138,12 +136,10 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion, epoch, start_time
         loss_d_real = lambda_adv * loss_d_real_label + loss_d_real_tag
         loss_d_real.backward()
 
-        gc.collect()
-
         # trained with fake image
         z.data.normal_(0, 1)
         tags.data.uniform_(to=1)
-        vec = torch.cat((z, tags), 1)
+        vec = torch.cat((z, tags.clone()), 1)
         fake_X = gen.forward(vec).detach()
         pred_fake, pred_fake_t = dis(fake_X)
         labels.data.fill_(0.0)
@@ -152,11 +148,9 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion, epoch, start_time
         loss_d_fake = lambda_adv * loss_d_fake_label + loss_d_fake_tag
         loss_d_fake.backward()
 
-        gc.collect()
-
         # gradient penalty
-        shape = [1 for _ in range(X.dim()-1)]
-        alpha = torch.rand(opt.batch, *shape)
+        shape = [opt.batch] + [1 for _ in range(X.dim()-1)]
+        alpha = torch.rand(*shape)
         beta = torch.rand(X.size())
         if opt.cuda:
             alpha, beta = alpha.cuda(), beta.cuda()
@@ -167,12 +161,10 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion, epoch, start_time
             grad_out = grad_out.cuda()
         gradients = grad(outputs=pred_hat, inputs=x_hat, grad_outputs=grad_out,
                          create_graph=True, retain_graph=True, only_inputs=True)[0]
-        gradient_penalty = lambda_gp * ((gradients.norm(2, dim=1) - 1)**2).mean()
+        gradient_penalty = lambda_gp * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
         gradient_penalty.backward()
         loss_d = loss_d_real + loss_d_fake + gradient_penalty
         d_optim.step()
-
-        gc.collect()
 
         ######################
         # Training generator #
@@ -181,7 +173,7 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion, epoch, start_time
 
         z.data.normal_(0, 1)
         tags.data.uniform_(to=1)
-        vec = torch.cat((z, tags), 1)
+        vec = torch.cat((z, tags.clone()), 1)
         gen_X = gen(vec)
         pred_gen, pred_gen_t = dis(gen_X)
         labels.data.fill_(1.0)
@@ -190,8 +182,6 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion, epoch, start_time
         loss_g_gen = lambda_adv * loss_g_gen_label + loss_g_gen_tag
         loss_g_gen.backward()
         g_optim.step()
-
-        gc.collect()
 
         elapsed = time.time() - start_time
         print('[%d/%d] [%d/%d] %.4f Loss_D: %.4f Loss_G: %.4f Loss_D_Label: %.4f Loss_G_Label: %.4f Loss_D_Tag: %.4f Loss_G_Tag: %.4f' % (epoch, opt.epoch, iteration, len(train_loader), elapsed, loss_d.data[0], loss_g_gen.data[0], loss_d_real_label.data[0] + loss_d_fake_label.data[0], loss_g_gen_label.data[0], loss_d_real_tag.data[0] + loss_d_fake_tag.data[0], loss_g_gen_tag.data[0]))
@@ -221,7 +211,7 @@ def save_stage(gen, dis, gen_optim, dis_optim, epoch):
     tags.data.uniform_(to=1)
     if opt.cuda:
         z, tags = z.cuda(), tags.cuda()
-    sample = gen(torch.cat((z, tags), 1))
+    sample = gen(torch.cat((z, tags.clone()), 1))
     vutil.save_image(sample.data.view(opt.batch, 3, opt.image_size, opt.image_size), samples_out_path)
     print('[DEMO] samples in epoch {} saved'.format(epoch))
 

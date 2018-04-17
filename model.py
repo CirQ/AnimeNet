@@ -13,7 +13,6 @@ class _ResidualBlockG(nn.Module):
         self.relu = nn.ReLU()
         self.conv2 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1)
         self.bn2 = nn.BatchNorm2d(num_features=64)
-        # initialize_weights(self)
 
     def forward(self, x):
         out = self.relu(self.bn1(self.conv1(x)))
@@ -29,7 +28,6 @@ class _SubPixelCNN(nn.Module):
         self.shuf = nn.PixelShuffle(upscale_factor=2)
         self.bn = nn.BatchNorm2d(num_features=64)
         self.relu = nn.ReLU()
-        # initialize_weights(self)
 
     def forward(self, x):
         out = self.shuf(self.conv(x))
@@ -44,7 +42,6 @@ class _ResidualBlockD(nn.Module):
         self.relu1 = nn.LeakyReLU(negative_slope=0.2)
         self.conv2 = nn.Conv2d(in_channels=ch, out_channels=ch, kernel_size=k, stride=s, padding=1)
         self.relu2 = nn.LeakyReLU(negative_slope=0.2)
-        # initialize_weights(self)
 
     def forward(self, x):
         out = self.conv2(self.relu1(self.conv1(x)))
@@ -59,7 +56,6 @@ class _BlockD(nn.Module):
                                  _ResidualBlockD(ch_in=ch_in, ch=ch_in, k=k, s=s))
         self.conv = nn.Conv2d(in_channels=ch_in, out_channels=ch_out, kernel_size=4, stride=2, padding=1)
         self.relu = nn.LeakyReLU(negative_slope=0.2)
-        # initialize_weights(self)
 
     def forward(self, x):
         output = self.relu(self.conv(self.res(x)))
@@ -72,13 +68,13 @@ class Generator(nn.Module):
 
         self.dense_in = nn.Linear(in_features=128+feature_num, out_features=64*16*16)
         self.bn_in = nn.BatchNorm2d(num_features=64)
-        self.relu_in = nn.ReLU()
+        self.relu_in = nn.ReLU(True)
 
         self.residual = self.make_layer(_ResidualBlockG, 16)
 
         self.conv_mid = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1)
         self.bn_mid = nn.BatchNorm2d(num_features=64)
-        self.relu_mid = nn.ReLU()
+        self.relu_mid = nn.ReLU(True)
 
         self.subpixel = self.make_layer(_SubPixelCNN, 3)
 
@@ -127,21 +123,28 @@ class Discriminator(nn.Module):
     def forward(self, x):
         out = self.relu_in(self.conv_in(x))
         out = self.features(out).view(out.size()[0], -1)
-        out_p = self.sigmoid_p(self.dense_p(out)).squeeze(1)
-        out_t = self.sigmoid_t(self.dense_t(out))
+        # out_p = self.sigmoid_p(self.dense_p(out)).squeeze(1)
+        # out_t = self.sigmoid_t(self.dense_t(out))
+        out_p = self.dense_p(out).squeeze(1)
+        out_t = self.dense_t(out)
         return out_p, out_t
 
 
 def unit_test(tn=10):
+    batch_size = 1
+    img_size = 128
     g, d = Generator(tn), Discriminator(tn)
-    x = Variable(torch.randn(2, 128+tn))
+    x = Variable(torch.ones(batch_size, img_size+tn))
 
     o = g(x)
     print(o.size())
 
+    vutils.save_image(o.data.view(batch_size, 3, img_size, img_size),
+                      'samples/fake_samples.png')
     p, t = d(o)
     print(p.size(), t.size())
 
 
 if __name__ == '__main__':
+    import torchvision.utils as vutils
     unit_test()
