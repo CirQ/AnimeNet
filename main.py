@@ -94,10 +94,7 @@ def main():
             print('[ERROR] No model found at {}'.format(opt.pre_trained))
 
     print('[INFO] Start Training')
-    start = time.time()
-    for epoch in range(opt.start_epoch, opt.epoch+1):
-        train(train_loader, G, D, G_optim, D_optim, criterion, epoch, start)
-        save_stage(G, D, G_optim, D_optim, epoch)
+    train(train_loader, G, D, G_optim, D_optim, criterion)
 
 
 def adjust_learning_rate(optimizer, epoch):
@@ -108,83 +105,88 @@ def adjust_learning_rate(optimizer, epoch):
 
 lambda_adv = opt.features
 lambda_gp = 0.5
-def train(train_loader, gen, dis, g_optim, d_optim, criterion, epoch, start_time):
-    adjust_learning_rate(g_optim, epoch)
-    adjust_learning_rate(d_optim, epoch)
+def train(train_loader, gen, dis, g_optim, d_optim, criterion):
+    start_time = time.time()
+    dis.train()
+    for epoch in range(opt.start_epoch, opt.epoch+1):
+        adjust_learning_rate(g_optim, epoch)
+        adjust_learning_rate(d_optim, epoch)
 
-    X = Variable(FloatTensor(opt.batch, 3, opt.image_size, opt.image_size)) # input images
-    z = Variable(FloatTensor(opt.batch, opt.noise_size))                    # input noise
-    tags = Variable(FloatTensor(opt.batch, opt.features))                   # input tags
-    labels = Variable(FloatTensor(opt.batch))                               # real probability
-    if opt.cuda:
-        X, z, tags, labels = X.cuda(), z.cuda(), tags.cuda(), labels.cuda()
+        X = Variable(FloatTensor(opt.batch, 3, opt.image_size, opt.image_size))
+        z = Variable(FloatTensor(opt.batch, opt.noise_size))
+        tag_real = Variable(FloatTensor(opt.batch, opt.features))
+        tag_fake = Variable(FloatTensor(opt.batch, opt.features))
+        y_real = Variable(torch.ones(opt.batch))
+        y_fake = Variable(torch.zeros(opt.batch))
 
-    for iteration, (tag, img) in enumerate(train_loader, start=1):
-        X.data.copy_(img)
-        tags.data.copy_(tag)
-
-        ##########################
-        # Training discriminator #
-        ##########################
-        dis.zero_grad()
-
-        # trained with real image
-        pred_real, pred_real_t = dis(X)
-        labels.data.fill_(1.0)
-        loss_d_real_label = criterion(pred_real, labels)
-        loss_d_real_tag = criterion(pred_real_t, tags)
-        loss_d_real = lambda_adv * loss_d_real_label + loss_d_real_tag
-        loss_d_real.backward()
-
-        # trained with fake image
-        z.data.normal_(0, 1)
-        tags.data.uniform_(to=1)
-        vec = torch.cat((z, tags.clone()), 1)
-        fake_X = gen.forward(vec).detach()
-        pred_fake, pred_fake_t = dis(fake_X)
-        labels.data.fill_(0.0)
-        loss_d_fake_label = criterion(pred_fake, labels)
-        loss_d_fake_tag = criterion(pred_fake_t, tags)
-        loss_d_fake = lambda_adv * loss_d_fake_label + loss_d_fake_tag
-        loss_d_fake.backward()
-
-        # gradient penalty
-        shape = [opt.batch] + [1 for _ in range(X.dim()-1)]
-        alpha = torch.rand(*shape)
-        beta = torch.rand(X.size())
         if opt.cuda:
-            alpha, beta = alpha.cuda(), beta.cuda()
-        x_hat = Variable(alpha*X.data + (1-alpha)*(X.data+0.5*X.data.std()*beta), requires_grad=True)
-        pred_hat, _ = dis(x_hat)
-        grad_out = torch.ones(pred_hat.size())
-        if opt.cuda:
-            grad_out = grad_out.cuda()
-        gradients = grad(outputs=pred_hat, inputs=x_hat, grad_outputs=grad_out,
-                         create_graph=True, retain_graph=True, only_inputs=True)[0]
-        gradient_penalty = lambda_gp * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
-        gradient_penalty.backward()
-        loss_d = loss_d_real + loss_d_fake + gradient_penalty
-        d_optim.step()
+            X, z = X.cuda(), z.cuda()
+            tag_real, tag_fake = tag_real.cuda(), tag_fake.cuda()
+            y_real, y_fake = y_real.cuda(), y_fake.cuda()
 
-        ######################
-        # Training generator #
-        ######################
-        gen.zero_grad()
+        gen.train()
+        for iteration, (tag, img) in enumerate(train_loader, start=1):
+            X.data.copy_(img)
+            tag_real.data.copy_(tag)
+            z.data.normal_(0, 1)
+            tag_fake.data.uniform_(to=1)
+            vec = torch.cat((z, tag_fake), 1)
 
-        z.data.normal_(0, 1)
-        tags.data.uniform_(to=1)
-        vec = torch.cat((z, tags.clone()), 1)
-        gen_X = gen(vec)
-        pred_gen, pred_gen_t = dis(gen_X)
-        labels.data.fill_(1.0)
-        loss_g_gen_label = criterion(pred_gen, labels)
-        loss_g_gen_tag = criterion(pred_gen_t, tags)
-        loss_g_gen = lambda_adv * loss_g_gen_label + loss_g_gen_tag
-        loss_g_gen.backward()
-        g_optim.step()
+            ##########################
+            # Training discriminator #
+            ##########################
+            d_optim.zero_grad()
 
-        elapsed = time.time() - start_time
-        print('[%d/%d] [%d/%d] %.4f Loss_D: %.4f Loss_G: %.4f Loss_D_Label: %.4f Loss_G_Label: %.4f Loss_D_Tag: %.4f Loss_G_Tag: %.4f' % (epoch, opt.epoch, iteration, len(train_loader), elapsed, loss_d.data[0], loss_g_gen.data[0], loss_d_real_label.data[0] + loss_d_fake_label.data[0], loss_g_gen_label.data[0], loss_d_real_tag.data[0] + loss_d_fake_tag.data[0], loss_g_gen_tag.data[0]))
+            # trained with real image
+            pred_real, pred_real_t = dis(X)
+            d_real_label_loss = criterion(pred_real, y_real)
+            d_real_tag_loss = criterion(pred_real_t, tag_real)
+            d_real_loss = lambda_adv * d_real_label_loss + d_real_tag_loss
+
+            # trained with fake image
+            fake_X = gen(vec)
+            pred_fake, pred_fake_t = dis(fake_X)
+            d_fake_label_loss = criterion(pred_fake, y_fake)
+            d_fake_tag_loss = criterion(pred_fake_t, tag_fake)
+            d_fake_loss = lambda_adv * d_fake_label_loss + d_fake_tag_loss
+
+            # gradient penalty
+            shape = [opt.batch] + [1 for _ in range(X.dim()-1)]
+            alpha = torch.rand(*shape)
+            beta = torch.rand(X.size())
+            if opt.cuda:
+                alpha, beta = alpha.cuda(), beta.cuda()
+            x_hat = Variable(alpha*X.data + (1-alpha)*(X.data+0.5*X.data.std()*beta), requires_grad=True)
+            pred_hat, _ = dis(x_hat)
+            grad_out = torch.ones(pred_hat.size())
+            if opt.cuda:
+                grad_out = grad_out.cuda()
+            gradients = grad(outputs=pred_hat, inputs=x_hat, grad_outputs=grad_out,
+                             create_graph=True, retain_graph=True, only_inputs=True)[0]
+            gradient_penalty = lambda_gp * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+            d_loss = d_real_loss + d_fake_loss + gradient_penalty
+
+            d_loss.backward()
+            d_optim.step()
+
+            ######################
+            # Training generator #
+            ######################
+            g_optim.zero_grad()
+
+            gen_X = gen(vec)
+            pred_gen, pred_gen_t = dis(gen_X)
+            g_label_loss = criterion(pred_gen, y_real)
+            g_tag_loss = criterion(pred_gen_t, tag_fake)
+            g_loss = lambda_adv * g_label_loss + g_tag_loss
+
+            g_loss.backward()
+            g_optim.step()
+
+            elapsed = time.time() - start_time
+            print('[%d/%d] [%d/%d] elapsd: %.4f loss_d: %.4f loss_g: %.4f' % (epoch, opt.epoch, iteration, len(train_loader), elapsed, d_loss.data[0], g_loss.data[0]))
+
+        save_stage(gen, dis, g_optim, d_optim, epoch)
 
 def save_stage(gen, dis, gen_optim, dis_optim, epoch):
     if not os.path.exists('checkpoint'):
