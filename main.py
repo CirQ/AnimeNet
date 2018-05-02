@@ -112,13 +112,15 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion):
     z = Variable(FloatTensor(opt.batch, opt.noise_size))
     tag_real = Variable(FloatTensor(opt.batch, opt.features))
     tag_fake = Variable(FloatTensor(opt.batch, opt.features))
-    y_real = Variable(torch.ones(opt.batch))
-    y_fake = Variable(torch.zeros(opt.batch))
+    # y_real = Variable(torch.ones(opt.batch))
+    # y_fake = Variable(torch.zeros(opt.batch))
+    labels = Variable(FloatTensor(opt.batch))
 
     if opt.cuda:
         X, z = X.cuda(), z.cuda()
         tag_real, tag_fake = tag_real.cuda(), tag_fake.cuda()
-        y_real, y_fake = y_real.cuda(), y_fake.cuda()
+        # y_real, y_fake = y_real.cuda(), y_fake.cuda()
+        labels = labels.cuda()
 
     for epoch in range(opt.start_epoch, opt.epoch+1):
         adjust_learning_rate(g_optim, epoch)
@@ -127,7 +129,6 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion):
         for iteration, (tag, img) in enumerate(train_loader, start=1):
             X.data.copy_(img)
             tag_real.data.copy_(tag)
-            tag_fake.data.bernoulli_(0.2)
 
             ##########################
             # Training discriminator #
@@ -136,17 +137,22 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion):
 
             # trained with real image
             pred_real, pred_real_t = dis(X)
-            d_real_label_loss = criterion(pred_real, y_real)
+            labels.data.fill_(1.0)
+
+            d_real_label_loss = criterion(pred_real, labels)
             d_real_tag_loss = criterion(pred_real_t, tag_real)
             d_real_loss = lambda_adv * d_real_label_loss + d_real_tag_loss
             d_real_loss.backward()
 
             # trained with fake image
             z.data.normal_(0, 1)
+            tag_fake.data.bernoulli_(0.2)
             vec = torch.cat((z, tag_fake), 1)
             fake_X = gen(vec)
             pred_fake, pred_fake_t = dis(fake_X)
-            d_fake_label_loss = criterion(pred_fake, y_fake)
+            labels.data.fill_(0.0)
+
+            d_fake_label_loss = criterion(pred_fake, labels)
             d_fake_tag_loss = criterion(pred_fake_t, tag_fake)
             d_fake_loss = lambda_adv * d_fake_label_loss + d_fake_tag_loss
             d_fake_loss.backward()
@@ -176,14 +182,17 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion):
             gen.zero_grad()
 
             z.data.normal_(0, 1)
+            tag_fake.data.bernoulli_(0.2)
             vec = torch.cat((z, tag_fake), 1)
             gen_X = gen(vec)
             pred_gen, pred_gen_t = dis(gen_X)
-            g_label_loss = criterion(pred_gen, y_real)
+            labels.data.fill_(1.0)
+
+            g_label_loss = criterion(pred_gen, labels)
             g_tag_loss = criterion(pred_gen_t, tag_fake)
             g_loss = lambda_adv * g_label_loss + g_tag_loss
-
             g_loss.backward()
+
             g_optim.step()
 
             elapsed = time.time() - start_time
