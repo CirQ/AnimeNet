@@ -120,23 +120,19 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion):
         tag_real, tag_fake = tag_real.cuda(), tag_fake.cuda()
         y_real, y_fake = y_real.cuda(), y_fake.cuda()
 
-    dis.train()
     for epoch in range(opt.start_epoch, opt.epoch+1):
         adjust_learning_rate(g_optim, epoch)
         adjust_learning_rate(d_optim, epoch)
 
-        gen.train()
         for iteration, (tag, img) in enumerate(train_loader, start=1):
             X.data.copy_(img)
-            z.data.normal_(0, 1)
             tag_real.data.copy_(tag)
-            tag_fake.data.uniform_(to=1)
-            vec = torch.cat((z, tag_fake), 1)
+            tag_fake.data.bernoulli_(0.2)
 
             ##########################
             # Training discriminator #
             ##########################
-            d_optim.zero_grad()
+            dis.zero_grad()
 
             # trained with real image
             pred_real, pred_real_t = dis(X)
@@ -146,6 +142,8 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion):
             d_real_loss.backward()
 
             # trained with fake image
+            z.data.normal_(0, 1)
+            vec = torch.cat((z, tag_fake), 1)
             fake_X = gen(vec)
             pred_fake, pred_fake_t = dis(fake_X)
             d_fake_label_loss = criterion(pred_fake, y_fake)
@@ -175,8 +173,10 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion):
             ######################
             # Training generator #
             ######################
-            g_optim.zero_grad()
+            gen.zero_grad()
 
+            z.data.normal_(0, 1)
+            vec = torch.cat((z, tag_fake), 1)
             gen_X = gen(vec)
             pred_gen, pred_gen_t = dis(gen_X)
             g_label_loss = criterion(pred_gen, y_real)

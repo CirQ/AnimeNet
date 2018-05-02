@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
+import torchvision.utils as vutils
 
-from util import initialize_weights
+from util import *
 
 
 class _ResidualBlockG(nn.Module):
@@ -145,6 +146,16 @@ def unit_test(tn=10):
     print(p.size(), t.size())
 
 
+def visialize(tn=30):
+    batch_size = 1
+    img_size = 128
+    g, d = Generator(tn), Discriminator(tn)
+    x = Variable(torch.ones(batch_size, img_size+tn))
+    gout = g(x)
+    dout = d(gout)
+    make_dot(gout).render('generator', cleanup=True)
+    make_dot(dout[0]).render('discriminator', cleanup=True)
+
+
 if __name__ == '__main__':
-    import torchvision.utils as vutils
     unit_test()
