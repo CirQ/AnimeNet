@@ -75,10 +75,10 @@ def main():
             print('[LOAD] Loading checkpoint {}'.format(opt.resume))
             checkpoint = torch.load(opt.resume)
             opt.start_epoch = checkpoint['epoch'] + 1
-            G.load_state_dict(checkpoint['g'].state_dict())
-            D.load_state_dict(checkpoint['d'].state_dict())
-            G_optim.load_state_dict(checkpoint['g_optim'].state_dict())
-            D_optim.load_state_dict(checkpoint['d_optim'].state_dict())
+            G.load_state_dict(checkpoint['g'])
+            D.load_state_dict(checkpoint['d'])
+            G_optim.load_state_dict(checkpoint['g_optim'])
+            D_optim.load_state_dict(checkpoint['d_optim'])
         else:
             print('[ERROR] No checkpoint found at {}'.format(opt.resume))
 

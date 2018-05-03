@@ -140,8 +140,7 @@ def unit_test(tn=10):
     o = g(x)
     print(o.size())
 
-    vutils.save_image(o.data.view(batch_size, 3, img_size, img_size),
-                      'samples/fake_samples.png')
+    vutils.save_image(o.data.view(batch_size, 3, img_size, img_size), 'samples/fake_samples.png')
     p, t = d(o)
     print(p.size(), t.size())
 
