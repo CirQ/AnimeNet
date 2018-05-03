@@ -3,6 +3,7 @@ from __future__ import division
 import argparse
 import os
 import time
+import logging
 
 import torch
 import torch.nn as nn
@@ -42,7 +43,16 @@ parser.add_argument('--check_step', default=10, type=int, help='save checkpoint 
 
 
 opt = parser.parse_args()
-print('[OPTION] user defined options: {}'.format(opt))
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+logfile = logging.FileHandler('train.log')
+console = logging.StreamHandler()
+
+logger.addHandler(logfile)
+logger.addHandler(console)
 
 
 def main():
@@ -51,20 +61,20 @@ def main():
         if not torch.cuda.is_available():
             raise Exception('No GPU found or Wrong gpu id, please run without --cuda')
 
-    print('[INFO] Loading datasets')
+    logger.info('[INFO] Loading datasets')
     train_set = TagImageDataset(tag_path=opt.tag, img_path=opt.image)
     train_loader = DataLoader(train_set, num_workers=opt.threads, batch_size=opt.batch, shuffle=True, drop_last=True)
 
-    print('[INFO] Building model')
+    logger.info('[INFO] Building model')
     G = Generator(opt.features)
     D = Discriminator(opt.features)
     criterion = nn.BCEWithLogitsLoss()
 
-    print('[INFO] Setting Optimizer')
+    logger.info('[INFO] Setting Optimizer')
     G_optim = optim.Adam(G.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
     D_optim = optim.Adam(D.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
 
-    print('[INFO] Setting GPU')
+    logger.info('[INFO] Setting GPU')
     if opt.cuda:
         G = G.cuda()
         D = D.cuda()
@@ -72,7 +82,7 @@ def main():
 
     if opt.resume:
         if os.path.isfile(opt.resume):
-            print('[LOAD] Loading checkpoint {}'.format(opt.resume))
+            logger.info('[LOAD] Loading checkpoint {}'.format(opt.resume))
             checkpoint = torch.load(opt.resume)
             opt.start_epoch = checkpoint['epoch'] + 1
             G.load_state_dict(checkpoint['g'])
@@ -80,20 +90,20 @@ def main():
             G_optim.load_state_dict(checkpoint['g_optim'])
             D_optim.load_state_dict(checkpoint['d_optim'])
         else:
-            print('[ERROR] No checkpoint found at {}'.format(opt.resume))
+            logger.warning('[ERROR] No checkpoint found at {}'.format(opt.resume))
 
     if opt.pre_trained:
         if os.path.isfile(opt.pre_trained):
-            print('[LOAD] Loading model {}'.format(opt.pre_trained))
+            logger.info('[LOAD] Loading model {}'.format(opt.pre_trained))
             weights = torch.load(opt.pre_trained)
             G.load_state_dict(weights['g'].state_dict())
             D.load_state_dict(weights['d'].state_dict())
             G_optim.load_state_dict(weights['g_optim'].state_dict())
             D_optim.load_state_dict(weights['d_optim'].state_dict())
         else:
-            print('[ERROR] No model found at {}'.format(opt.pre_trained))
+            logger.warning('[ERROR] No model found at {}'.format(opt.pre_trained))
 
-    print('[INFO] Start Training')
+    logger.info('[INFO] Start Training')
     train(train_loader, G, D, G_optim, D_optim, criterion)
 
 
@@ -196,7 +206,7 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion):
             g_optim.step()
 
             elapsed = time.time() - start_time
-            print('[%03d/%d] [%03d/%d]  elapsd: %-10.4f  loss_d: %10.4f  loss_g: %10.4f' % (epoch, opt.epoch, iteration, len(train_loader), elapsed, d_loss.data[0], g_loss.data[0]))
+            logger.info('[%03d/%d] [%03d/%d]  elapsd: %-10.4f  loss_d: %10.4f  loss_g: %10.4f' % (epoch, opt.epoch, iteration, len(train_loader), elapsed, d_loss.data[0], g_loss.data[0]))
 
         save_stage(gen, dis, g_optim, d_optim, epoch)
 
@@ -216,7 +226,7 @@ def save_stage(gen, dis, gen_optim, dis_optim, epoch):
     }
     if epoch % opt.check_step == 0:
         torch.save(state, checkpoint_out_path)
-        print('[DUMP] checkpoint in epoch {} saved'.format(epoch))
+        logger.info('[DUMP] checkpoint in epoch {} saved'.format(epoch))
 
     samples_out_path = os.path.join('samples', 'samples_epoch_{:03d}.png'.format(epoch))
     z = Variable(FloatTensor(opt.batch, opt.noise_size))
@@ -227,7 +237,7 @@ def save_stage(gen, dis, gen_optim, dis_optim, epoch):
         z, tags = z.cuda(), tags.cuda()
     sample = gen(torch.cat((z, tags.clone()), 1))
     vutil.save_image(sample.data.view(opt.batch, 3, opt.image_size, opt.image_size), samples_out_path)
-    print('[DEMO] samples in epoch {} saved'.format(epoch))
+    logger.info('[DEMO] samples in epoch {} saved'.format(epoch))
 
 if __name__ == '__main__':
     main()
