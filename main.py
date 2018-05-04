@@ -112,6 +112,14 @@ def adjust_learning_rate(optimizer, epoch):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
+def fake_features(tensor):
+    # tensor.data.bernoulli_(0.2)
+    null = Variable(torch.zeros(1))
+    tensor.data.bernoulli_(0.15)
+    for vector in tensor:
+        for ele in vector:
+            if ele.data[0] > null.data[0]:
+                ele.data.uniform_(0.1, 0.9)
 
 lambda_adv = opt.features
 lambda_gp = 0.5
@@ -156,7 +164,7 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion):
 
             # trained with fake image
             z.data.normal_(0, 1)
-            tag_fake.data.bernoulli_(0.2)
+            fake_features(tag_fake)
             vec = torch.cat((z, tag_fake), 1)
             fake_X = gen(vec)
             pred_fake, pred_fake_t = dis(fake_X)
@@ -192,7 +200,7 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion):
             gen.zero_grad()
 
             z.data.normal_(0, 1)
-            tag_fake.data.bernoulli_(0.2)
+            fake_features(tag_fake)
             vec = torch.cat((z, tag_fake), 1)
             gen_X = gen(vec)
             pred_gen, pred_gen_t = dis(gen_X)
