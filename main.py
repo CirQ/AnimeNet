@@ -240,10 +240,10 @@ def save_stage(gen, dis, gen_optim, dis_optim, epoch):
     z = Variable(FloatTensor(opt.batch, opt.noise_size))
     tags = Variable(FloatTensor(opt.batch, opt.features))
     z.data.normal_(0, 1)
-    tags.data.uniform_(to=1)
+    fake_features(tags)
     if opt.cuda:
         z, tags = z.cuda(), tags.cuda()
-    sample = gen(torch.cat((z, tags.clone()), 1))
+    sample = gen(torch.cat((z, tags), 1))
     vutil.save_image(sample.data.view(opt.batch, 3, opt.image_size, opt.image_size), samples_out_path)
     logger.info('[DEMO] samples in epoch {} saved'.format(epoch))
 
