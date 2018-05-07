@@ -124,7 +124,7 @@ class Discriminator(nn.Module):
     def forward(self, x):
         out = self.relu_in(self.conv_in(x))
         out = self.features(out).view(out.size()[0], -1)
-        # out_p = self.sigmoid_p(self.dense_p(out)).squeeze(1)
+        # out_p = self.sigmoid_p(self.dense_p(out)).squeeze(1) # already use logits loss
         # out_t = self.sigmoid_t(self.dense_t(out))
         out_p = self.dense_p(out).squeeze(1)
         out_t = self.dense_t(out)

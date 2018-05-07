@@ -3,7 +3,6 @@
 # Author: cirq
 # Created Time: 2018-04-11 15:39:27
 
-from graphviz import Digraph
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
@@ -16,6 +15,8 @@ def initialize_weights(net):
                 m.bias.data.zero_()
 
 def make_dot(var, params=None):
+    return
+
     """
     Produces Graphviz representation of PyTorch autograd graph
     Blue nodes are the Variables that require grad, orange are Tensors
@@ -25,6 +26,8 @@ def make_dot(var, params=None):
         params: dict of (name, Variable) to add names to node that
             require grad (TODO: make optional)
     """
+    from graphviz import Digraph
+
     if params is not None:
         assert isinstance(params.values()[0], Variable)
         param_map = {id(v): k for k, v in params.items()}
