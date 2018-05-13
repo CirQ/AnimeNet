@@ -119,10 +119,12 @@ def fake_features(tensor):
 
     # continuous
     # null = Variable(torch.zeros(1))
+    # if opt.cuda:
+    #     null = null.cuda()
     # tensor.data.bernoulli_(0.16)
     # for vector in tensor:
     #     for ele in vector:
-    #         if ele.data[0] > null.data[0]:
+    #         if ele.data.item() > null.data.item():
     #             ele.data.uniform_(0.1, 0.9)
 
     # concrete
@@ -232,7 +234,7 @@ def train(train_loader, gen, dis, g_optim, d_optim, criterion):
             g_optim.step()
 
             elapsed = time.time() - start_time
-            logger.info('[%03d/%d] [%03d/%d]  elapsd: %-10.4f  loss_d: %10.4f  loss_g: %10.4f' % (epoch, opt.epoch, iteration, len(train_loader), elapsed, d_loss.data[0], g_loss.data[0]))
+            logger.info('[%03d/%d] [%03d/%d]  elapsd: %-10.4f  loss_d: %10.4f  loss_g: %10.4f' % (epoch, opt.epoch, iteration, len(train_loader), elapsed, d_loss.data.item(), g_loss.data.item()))
 
         save_stage(gen, dis, g_optim, d_optim, epoch)
 
