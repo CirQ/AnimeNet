@@ -1,131 +1,68 @@
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
+import torch.nn.functional as F
 import torchvision.utils as vutils
 
 from util import *
 
 
-class _ResidualBlockG(nn.Module):
-    def __init__(self):
-        super(_ResidualBlockG, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1)
-        self.bn1 = nn.BatchNorm2d(num_features=64)
-        self.relu = nn.ReLU()
-        self.conv2 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1)
-        self.bn2 = nn.BatchNorm2d(num_features=64)
-
-    def forward(self, x):
-        out = self.relu(self.bn1(self.conv1(x)))
-        out = self.bn2(self.conv2(out))
-        output = torch.add(out, x)
-        return output
-
-
-class _SubPixelCNN(nn.Module):
-    def __init__(self):
-        super(_SubPixelCNN, self).__init__()
-        self.conv = nn.Conv2d(in_channels=64, out_channels=256, kernel_size=3, stride=1, padding=1)
-        self.shuf = nn.PixelShuffle(upscale_factor=2)
-        self.bn = nn.BatchNorm2d(num_features=64)
-        self.relu = nn.ReLU()
-
-    def forward(self, x):
-        out = self.shuf(self.conv(x))
-        output = self.relu(self.bn(out))
-        return output
-
-
-class _ResidualBlockD(nn.Module):
-    def __init__(self, ch_in, ch, k, s):
-        super(_ResidualBlockD, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels=ch_in, out_channels=ch, kernel_size=k, stride=s, padding=1)
-        self.relu1 = nn.LeakyReLU(negative_slope=0.2)
-        self.conv2 = nn.Conv2d(in_channels=ch, out_channels=ch, kernel_size=k, stride=s, padding=1)
-        self.relu2 = nn.LeakyReLU(negative_slope=0.2)
-
-    def forward(self, x):
-        out = self.conv2(self.relu1(self.conv1(x)))
-        output = self.relu2(torch.add(out, x))
-        return output
-
-
-class _BlockD(nn.Module):
-    def __init__(self, ch_in, ch_out, k=3, s=1):
-        super(_BlockD, self).__init__()
-        self.res = nn.Sequential(_ResidualBlockD(ch_in=ch_in, ch=ch_in, k=k, s=s),
-                                 _ResidualBlockD(ch_in=ch_in, ch=ch_in, k=k, s=s))
-        self.conv = nn.Conv2d(in_channels=ch_in, out_channels=ch_out, kernel_size=4, stride=2, padding=1)
-        self.relu = nn.LeakyReLU(negative_slope=0.2)
-
-    def forward(self, x):
-        output = self.relu(self.conv(self.res(x)))
-        return output
-
 
 class Generator(nn.Module):
-    def __init__(self, feature_num):
+    def __init__(self, feature_num, d=128):
         super(Generator, self).__init__()
 
-        self.dense_in = nn.Linear(in_features=128+feature_num, out_features=64*16*16)
-        self.bn_in = nn.BatchNorm2d(num_features=64)
-        self.relu_in = nn.ReLU(True)
-
-        self.residual = self.make_layer(_ResidualBlockG, 16)
-
-        self.conv_mid = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1)
-        self.bn_mid = nn.BatchNorm2d(num_features=64)
-        self.relu_mid = nn.ReLU(True)
-
-        self.subpixel = self.make_layer(_SubPixelCNN, 3)
-
-        self.conv_out = nn.Conv2d(in_channels=64, out_channels=3, kernel_size=9, stride=1, padding=4)
-        self.tanh_out = nn.Tanh()
+        self.zlen = 128 + feature_num
+        self.deconv1 = nn.ConvTranspose2d(self.zlen, d*8, 4, 1, 0)
+        self.deconv1_bn = nn.BatchNorm2d(d*8)
+        self.deconv2 = nn.ConvTranspose2d(d*8, d*4, 4, 2, 1)
+        self.deconv2_bn = nn.BatchNorm2d(d*4)
+        self.deconv3 = nn.ConvTranspose2d(d*4, d*2, 4, 2, 1)
+        self.deconv3_bn = nn.BatchNorm2d(d*2)
+        self.deconv4 = nn.ConvTranspose2d(d*2, d, 4, 2, 1)
+        self.deconv4_bn = nn.BatchNorm2d(d)
+        self.deconv5 = nn.ConvTranspose2d(d, d//2, 4, 2, 1)
+        self.deconv5_bn = nn.BatchNorm2d(d//2)
+        self.deconv6 = nn.ConvTranspose2d(d//2, 3, 4, 2, 1)
 
         initialize_weights(self)
 
-    @staticmethod
-    def make_layer(block, num_of_layer):
-        layers = [block() for _ in range(num_of_layer)]
-        return nn.Sequential(*layers)
-
     def forward(self, x):
-        out = self.dense_in(x).view(-1, 64, 16, 16)
-        residual = self.relu_in(self.bn_in(out))
-        out = self.residual(residual)
-        out = self.relu_mid(self.bn_mid(self.conv_mid(out)))
-        out = self.subpixel(torch.add(out, residual))
-        output = self.tanh_out(self.conv_out(out))
+        x = x.view(-1, self.zlen, 1, 1)
+        out = F.relu(self.deconv1_bn(self.deconv1(x)))
+        out = F.relu(self.deconv2_bn(self.deconv2(out)))
+        out = F.relu(self.deconv3_bn(self.deconv3(out)))
+        out = F.relu(self.deconv4_bn(self.deconv4(out)))
+        out = F.relu(self.deconv5_bn(self.deconv5(out)))
+        output = F.tanh(self.deconv6(out))
         return output
 
 
 class Discriminator(nn.Module):
-    def __init__(self, feature_num):
+    def __init__(self, feature_num, d=128):
         super(Discriminator, self).__init__()
 
-        self.conv_in = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=4, stride=2, padding=1)
-        self.relu_in = nn.LeakyReLU(negative_slope=0.2)
-
-        self.features = nn.Sequential(
-            _BlockD(ch_in=32, ch_out=64),
-            _BlockD(ch_in=64, ch_out=128),
-            _BlockD(ch_in=128, ch_out=256),
-            _BlockD(ch_in=256, ch_out=512),
-            _BlockD(ch_in=512, ch_out=1024))
-
-        self.dense_p = nn.Linear(1024*2*2, 1)
-        self.sigmoid_p = nn.Sigmoid()
-
-        self.dense_t = nn.Linear(1024*2*2, feature_num)
-        self.sigmoid_t = nn.Sigmoid()
+        self.conv1 = nn.Conv2d(3, d, 4, 2, 1)
+        self.conv2 = nn.Conv2d(d, d*2, 4, 2, 1)
+        self.conv2_bn = nn.BatchNorm2d(d*2)
+        self.conv3 = nn.Conv2d(d*2, d*4, 4, 2, 1)
+        self.conv3_bn = nn.BatchNorm2d(d*4)
+        self.conv4 = nn.Conv2d(d*4, d*8, 4, 2, 1)
+        self.conv4_bn = nn.BatchNorm2d(d*8)
+        self.conv5 = nn.Conv2d(d*8, d*4, 4, 2, 1)
+        self.conv5_bn = nn.BatchNorm2d(d*4)
+        self.dense_p = nn.Linear(d*64, 1)
+        self.dense_t = nn.Linear(d*64, feature_num)
 
         initialize_weights(self)
 
     def forward(self, x):
-        out = self.relu_in(self.conv_in(x))
-        out = self.features(out).view(out.size()[0], -1)
-        # out_p = self.sigmoid_p(self.dense_p(out)).squeeze(1) # already use logits loss
-        # out_t = self.sigmoid_t(self.dense_t(out))
+        out = F.leaky_relu(self.conv1(x), 0.2)
+        out = F.leaky_relu(self.conv2_bn(self.conv2(out)), 0.2)
+        out = F.leaky_relu(self.conv3_bn(self.conv3(out)), 0.2)
+        out = F.leaky_relu(self.conv4_bn(self.conv4(out)), 0.2)
+        out = F.leaky_relu(self.conv5_bn(self.conv5(out)), 0.2)
+        out = out.view(out.size()[0], -1)
         out_p = self.dense_p(out).squeeze(1)
         out_t = self.dense_t(out)
         return out_p, out_t

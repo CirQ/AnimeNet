@@ -118,28 +118,28 @@ def fake_features(tensor):
     # tensor.data.bernoulli_(0.16)
 
     # continuous
-    # null = Variable(torch.zeros(1))
-    # if opt.cuda:
-    #     null = null.cuda()
-    # tensor.data.bernoulli_(0.16)
-    # for vector in tensor:
-    #     for ele in vector:
-    #         if ele.data.item() > null.data.item():
-    #             ele.data.uniform_(0.1, 0.9)
+    null = Variable(torch.zeros(1))
+    if opt.cuda:
+        null = null.cuda()
+    tensor.data.bernoulli_(0.16)
+    for vector in tensor:
+        for ele in vector:
+            if ele.data.item() > null.data.item():
+                ele.data.uniform_(0.1, 0.9)
 
     # concrete
-    assert tensor.size() == torch.Size((opt.batch, 30))
-    tensor.data.fill_(0)
-    hair_color = random.randint(0, 12)
-    hair_style = random.randint(13, 16)
-    eyes_color = random.randint(17, 27)
-    is_smile = random.choice((False, True))
-    is_blush = random.choice((False, True))
-    tensor.data[hair_color] = 1
-    tensor.data[hair_style] = 1
-    tensor.data[eyes_color] = 1
-    if is_smile: tensor.data[-2] = 1
-    if is_blush: tensor.data[-1] = 1
+    # assert tensor.size() == torch.Size((opt.batch, 30))
+    # tensor.data.fill_(0)
+    # hair_color = random.randint(0, 12)
+    # hair_style = random.randint(13, 16)
+    # eyes_color = random.randint(17, 27)
+    # is_smile = random.choice((False, True))
+    # is_blush = random.choice((False, True))
+    # tensor.data[hair_color] = 1
+    # tensor.data[hair_style] = 1
+    # tensor.data[eyes_color] = 1
+    # if is_smile: tensor.data[-2] = 1
+    # if is_blush: tensor.data[-1] = 1
 
 lambda_adv = opt.features
 lambda_gp = 0.5
