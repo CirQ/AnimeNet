@@ -97,5 +97,5 @@ ENV/
 
 .idea
 
-checkpoint
+*checkpoint
 samples
